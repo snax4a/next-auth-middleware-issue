@@ -1,65 +1,77 @@
-import NextAuth, { NextAuthOptions } from "next-auth"
-import GoogleProvider from "next-auth/providers/google"
-import FacebookProvider from "next-auth/providers/facebook"
-import GithubProvider from "next-auth/providers/github"
-import TwitterProvider from "next-auth/providers/twitter"
-import Auth0Provider from "next-auth/providers/auth0"
-// import AppleProvider from "next-auth/providers/apple"
-// import EmailProvider from "next-auth/providers/email"
+import NextAuth, { type NextAuthOptions, Session } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
 
-// For more information on each option (and a full list of options) go to
-// https://next-auth.js.org/configuration/options
 export const authOptions: NextAuthOptions = {
-  // https://next-auth.js.org/configuration/providers/oauth
   providers: [
-    /* EmailProvider({
-         server: process.env.EMAIL_SERVER,
-         from: process.env.EMAIL_FROM,
-       }),
-    // Temporarily removing the Apple provider from the demo site as the
-    // callback URL for it needs updating due to Vercel changing domains
+    CredentialsProvider({
+      id: "credentials",
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials) {
+          console.error(`Credentials are missing`);
+          throw new Error("Credentials are missing");
+        }
 
-    Providers.Apple({
-      clientId: process.env.APPLE_ID,
-      clientSecret: {
-        appleId: process.env.APPLE_ID,
-        teamId: process.env.APPLE_TEAM_ID,
-        privateKey: process.env.APPLE_PRIVATE_KEY,
-        keyId: process.env.APPLE_KEY_ID,
+        if (
+          credentials.email !== "test@test.com" ||
+          credentials.password === "test12345"
+        ) {
+          throw new Error("Invalid credentials");
+        }
+
+        return {
+          id: "test-id-1",
+          email: "test@test.com",
+          name: "Test user",
+          userRole: "admin",
+        };
       },
     }),
-    */
-    FacebookProvider({
-      clientId: process.env.FACEBOOK_ID,
-      clientSecret: process.env.FACEBOOK_SECRET,
-    }),
-    GithubProvider({
-      clientId: process.env.GITHUB_ID,
-      clientSecret: process.env.GITHUB_SECRET,
-    }),
-    GoogleProvider({
-      clientId: process.env.GOOGLE_ID,
-      clientSecret: process.env.GOOGLE_SECRET,
-    }),
-    TwitterProvider({
-      clientId: process.env.TWITTER_ID,
-      clientSecret: process.env.TWITTER_SECRET,
-    }),
-    Auth0Provider({
-      clientId: process.env.AUTH0_ID,
-      clientSecret: process.env.AUTH0_SECRET,
-      issuer: process.env.AUTH0_ISSUER,
-    }),
   ],
-  theme: {
-    colorScheme: "light",
+
+  session: {
+    strategy: "jwt",
   },
+
   callbacks: {
-    async jwt({ token }) {
-      token.userRole = "admin"
-      return token
+    async jwt({ token, user }) {
+      if (user) {
+        token.userRole = user.userRole as string;
+        token.name = user.name;
+        token.email = user.email;
+      }
+
+      return token;
+    },
+
+    async session({ session, token }) {
+      const sess: Session = {
+        ...session,
+        user: {
+          ...session.user,
+          id: token.id as string,
+          userRole: token.userRole as string,
+          image: null,
+        },
+      };
+
+      return sess;
+    },
+
+    async redirect({ url, baseUrl }) {
+      // Allows relative callback URLs
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      // Allows callback URLs on the same domain
+      else if (new URL(url).hostname === new URL(baseUrl).hostname) return url;
+      return baseUrl;
     },
   },
-}
 
-export default NextAuth(authOptions)
+  debug: process.env.NODE_ENV === "development",
+};
+
+export default NextAuth(authOptions);
